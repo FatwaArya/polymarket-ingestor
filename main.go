@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/FatwaArya/pm-ingest/config"
 	"github.com/FatwaArya/pm-ingest/internal"
+	"github.com/FatwaArya/pm-ingest/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +24,8 @@ func main() {
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	ctx := context.Background()
 
 	// Create subscriptions for activity trades (public, no auth needed)
 	subscriptions := []internal.Subscription{
@@ -37,13 +42,31 @@ func main() {
 	// 	subscriptions = append(subscriptions, internal.NewClobUserSubscription(auth))
 	// }
 
+	writer, err := internal.NewTradeWriter(ctx, "localhost", 9009)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer writer.Close(ctx)
+
 	// Create WebSocket client
 	client := internal.NewWebSocketClient(
 		subscriptions,
 		func(message []byte) {
-			log.Printf("[RAW] %s", string(message))
+			trade, err := utils.ParseActivityTrade(message)
+			if err != nil {
+				// Skip non-trade messages silently
+				if errors.Is(err, utils.ErrSkipMessage) {
+					return
+				}
+				log.Printf("Error parsing activity trade: %v", err)
+				return
+			}
+			if err := writer.Write(ctx, trade); err != nil {
+				log.Printf("Error writing trade to QuestDB: %v", err)
+			}
 		},
-		true, // verbose
+		false, // verbose
 	)
 
 	// Run WebSocket in a goroutine

@@ -5,15 +5,24 @@ import (
 	"fmt"
 )
 
+// IncomingMessage represents the wrapper structure for WebSocket messages
+type IncomingMessage struct {
+	ConnectionID string          `json:"connection_id"`
+	Payload      json.RawMessage `json:"payload"`
+	Timestamp    int64           `json:"timestamp"`
+	Topic        string          `json:"topic"`
+	Type         string          `json:"type"`
+}
+
 // ActivityTradePayload represents a trade from the activity topic
 type ActivityTradePayload struct {
-	ID                 string  `json:"id"`
-	Market             string  `json:"market"`
+	ID                 string  `json:"id,omitempty"`
+	Market             string  `json:"market,omitempty"`
 	Asset              string  `json:"asset"`
 	Side               string  `json:"side"`  // BUY/SELL
 	Price              float64 `json:"price"` // Price in decimal (e.g., 0.55)
 	Size               float64 `json:"size"`
-	Fee                float64 `json:"fee"`
+	Fee                float64 `json:"fee,omitempty"`
 	Timestamp          int64   `json:"timestamp"`
 	TransactionHash    string  `json:"transactionHash,omitempty"`
 	Maker              string  `json:"maker,omitempty"`
@@ -23,11 +32,17 @@ type ActivityTradePayload struct {
 	ConditionID        string  `json:"conditionId,omitempty"`
 	OutcomeIndex       int     `json:"outcomeIndex,omitempty"`
 	QuestionID         string  `json:"questionId,omitempty"`
-	MarketSlug         string  `json:"marketSlug,omitempty"`
+	MarketSlug         string  `json:"slug,omitempty"` // JSON field is "slug"
 	EventSlug          string  `json:"eventSlug,omitempty"`
-	EventTitle         string  `json:"eventTitle,omitempty"`
-	OutcomeTitle       string  `json:"outcomeTitle,omitempty"`
-	ProxyWalletAddress string  `json:"proxyWalletAddress,omitempty"`
+	EventTitle         string  `json:"title,omitempty"`       // JSON field is "title"
+	OutcomeTitle       string  `json:"outcome,omitempty"`     // JSON field is "outcome"
+	ProxyWalletAddress string  `json:"proxyWallet,omitempty"` // JSON field is "proxyWallet"
+	// Additional fields from the actual payload
+	Name         string `json:"name,omitempty"`
+	Pseudonym    string `json:"pseudonym,omitempty"`
+	Bio          string `json:"bio,omitempty"`
+	Icon         string `json:"icon,omitempty"`
+	ProfileImage string `json:"profileImage,omitempty"`
 }
 
 // ClobUserOrder represents an order update from clob_user topic
@@ -109,12 +124,38 @@ const (
 	TypeOrders = "orders"
 )
 
-// ParseActivityTrade parses the payload from an activity trades message
-func ParseActivityTrade(payload json.RawMessage) (*ActivityTradePayload, error) {
-	var trade ActivityTradePayload
-	if err := json.Unmarshal(payload, &trade); err != nil {
-		return nil, fmt.Errorf("failed to parse activity trade: %w", err)
+// ErrSkipMessage is returned when a message should be skipped (not a trade)
+var ErrSkipMessage = fmt.Errorf("skip message")
+
+// ParseActivityTrade parses the full WebSocket message and extracts the trade payload
+func ParseActivityTrade(message []byte) (*ActivityTradePayload, error) {
+	// Skip empty messages
+	if len(message) == 0 {
+		return nil, ErrSkipMessage
 	}
+
+	// Skip non-JSON messages (like "pong")
+	if message[0] != '{' {
+		return nil, ErrSkipMessage
+	}
+
+	// First, parse the wrapper message
+	var incoming IncomingMessage
+	if err := json.Unmarshal(message, &incoming); err != nil {
+		return nil, fmt.Errorf("failed to parse incoming message: %w", err)
+	}
+
+	// Skip non-trade messages silently
+	if incoming.Topic != TopicActivity || incoming.Type != TypeTrades {
+		return nil, ErrSkipMessage
+	}
+
+	// Parse the actual trade payload
+	var trade ActivityTradePayload
+	if err := json.Unmarshal(incoming.Payload, &trade); err != nil {
+		return nil, fmt.Errorf("failed to parse activity trade payload: %w", err)
+	}
+
 	return &trade, nil
 }
 
