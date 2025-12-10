@@ -11,7 +11,6 @@ import (
 
 	"github.com/FatwaArya/pm-ingest/config"
 	"github.com/FatwaArya/pm-ingest/internal"
-	"github.com/FatwaArya/pm-ingest/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,72 +22,36 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// assetsIDs := []string{
-	// 	// "81104637750588840860328515305303028259865221573278091453716127842023614249200",
-	// 	// "60487116984468020978247225474488676749601001829886755968952521846780452448915",
-	// }
-
-	// conditionIDs := []string{
-	// Add specific condition IDs here, or leave empty for all markets
-	// Example: "0x1234..."
-	// "0x4319532e181605cb15b1bd677759a3bc7f7394b2fdf145195b700eeaedfd5221",
-	// }
-
-	// Auth credentials from config
-	auth := &internal.Auth{
-		APIKey:     config.AppConfig.PolymarketAPIKey,
-		Secret:     config.AppConfig.PolymarketSecret,
-		Passphrase: config.AppConfig.PolymarketPassphrase,
+	// Create subscriptions for activity trades (public, no auth needed)
+	subscriptions := []internal.Subscription{
+		internal.NewActivityTradesSubscription(),
 	}
 
-	// Create user WebSocket connection (receives your order updates)
-	userConn := internal.NewWebSocketOrderBook(
-		internal.UserChannel,
-		internal.WsURL,
-		make([]string, 0),
-		auth,
-		func(message []byte) {
-			msg, err := utils.ParseUserMessage(message)
-			if err != nil {
-				log.Printf("Failed to parse message: %v", err)
-				return
-			}
+	// Optionally add clob_user subscription if auth is configured
+	// if config.AppConfig.PolymarketAPIKey != "" {
+	// 	auth := &internal.Auth{
+	// 		APIKey:     config.AppConfig.PolymarketAPIKey,
+	// 		Secret:     config.AppConfig.PolymarketSecret,
+	// 		Passphrase: config.AppConfig.PolymarketPassphrase,
+	// 	}
+	// 	subscriptions = append(subscriptions, internal.NewClobUserSubscription(auth))
+	// }
 
-			switch m := msg.(type) {
-			case *utils.TradeMessage:
-				log.Printf("[TRADE] %s | %s %s @ %s | Status: %s | Market: %s",
-					m.ID, m.Side, m.Size, m.Price, m.Status, m.Market)
-			case *utils.OrderMessage:
-				log.Printf("[ORDER] %s | %s %s @ %s | Type: %s | Market: %s",
-					m.ID, m.Side, m.OriginalSize, m.Price, m.Type, m.Market)
-			}
+	// Create WebSocket client
+	client := internal.NewWebSocketClient(
+		subscriptions,
+		func(message []byte) {
+			log.Printf("[RAW] %s", string(message))
 		},
 		true, // verbose
 	)
 
-	// marketConn := internal.NewWebSocketOrderBook(
-	// 	internal.MarketChannel,
-	// 	internal.WsURL,
-	// 	assetsIDs,
-	// 	auth,
-	// 	func(message []byte) {
-	// 		fmt.Println(string(message))
-	// 	},
-	// 	true, // verbose
-	// )
-
 	// Run WebSocket in a goroutine
 	go func() {
-		if err := userConn.Run(); err != nil {
-			log.Printf("User WebSocket error: %v", err)
+		if err := client.Run(); err != nil {
+			log.Printf("WebSocket error: %v", err)
 		}
 	}()
-
-	// go func() {
-	// 	if err := marketConn.Run(); err != nil {
-	// 		log.Printf("Market WebSocket error: %v", err)
-	// 	}
-	// }()
 
 	// Setup Gin router
 	r := gin.Default()
@@ -119,6 +82,5 @@ func main() {
 	// Wait for shutdown signal
 	<-sigChan
 	log.Println("Shutting down...")
-	// marketConn.Close()
-	userConn.Close()
+	client.Close()
 }

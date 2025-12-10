@@ -5,6 +5,65 @@ import (
 	"fmt"
 )
 
+// ActivityTradePayload represents a trade from the activity topic
+type ActivityTradePayload struct {
+	ID                 string  `json:"id"`
+	Market             string  `json:"market"`
+	Asset              string  `json:"asset"`
+	Side               string  `json:"side"`  // BUY/SELL
+	Price              float64 `json:"price"` // Price in decimal (e.g., 0.55)
+	Size               float64 `json:"size"`
+	Fee                float64 `json:"fee"`
+	Timestamp          int64   `json:"timestamp"`
+	TransactionHash    string  `json:"transactionHash,omitempty"`
+	Maker              string  `json:"maker,omitempty"`
+	Taker              string  `json:"taker,omitempty"`
+	MakerOrderID       string  `json:"makerOrderId,omitempty"`
+	TakerOrderID       string  `json:"takerOrderId,omitempty"`
+	ConditionID        string  `json:"conditionId,omitempty"`
+	OutcomeIndex       int     `json:"outcomeIndex,omitempty"`
+	QuestionID         string  `json:"questionId,omitempty"`
+	MarketSlug         string  `json:"marketSlug,omitempty"`
+	EventSlug          string  `json:"eventSlug,omitempty"`
+	EventTitle         string  `json:"eventTitle,omitempty"`
+	OutcomeTitle       string  `json:"outcomeTitle,omitempty"`
+	ProxyWalletAddress string  `json:"proxyWalletAddress,omitempty"`
+}
+
+// ClobUserOrder represents an order update from clob_user topic
+type ClobUserOrder struct {
+	ID              string   `json:"id"`
+	Market          string   `json:"market"`
+	AssetID         string   `json:"asset_id"`
+	Side            string   `json:"side"`
+	Price           string   `json:"price"`
+	OriginalSize    string   `json:"original_size"`
+	SizeMatched     string   `json:"size_matched"`
+	Type            string   `json:"type"` // PLACEMENT, UPDATE, CANCELLATION
+	Outcome         string   `json:"outcome"`
+	Owner           string   `json:"owner"`
+	Timestamp       string   `json:"timestamp"`
+	AssociateTrades []string `json:"associate_trades,omitempty"`
+}
+
+// ClobUserTrade represents a trade update from clob_user topic
+type ClobUserTrade struct {
+	ID           string       `json:"id"`
+	Market       string       `json:"market"`
+	AssetID      string       `json:"asset_id"`
+	Side         string       `json:"side"`
+	Price        string       `json:"price"`
+	Size         string       `json:"size"`
+	Status       string       `json:"status"` // MATCHED, MINED, CONFIRMED, RETRYING, FAILED
+	Outcome      string       `json:"outcome"`
+	Owner        string       `json:"owner"`
+	TakerOrderID string       `json:"taker_order_id"`
+	Timestamp    string       `json:"timestamp"`
+	MatchTime    string       `json:"matchtime,omitempty"`
+	LastUpdate   string       `json:"last_update,omitempty"`
+	MakerOrders  []MakerOrder `json:"maker_orders,omitempty"`
+}
+
 // MakerOrder represents a maker order in a trade
 type MakerOrder struct {
 	AssetID       string `json:"asset_id"`
@@ -13,52 +72,6 @@ type MakerOrder struct {
 	Outcome       string `json:"outcome"`
 	Owner         string `json:"owner"`
 	Price         string `json:"price"`
-}
-
-// TradeMessage is emitted when orders are matched or trade status changes
-// Statuses: MATCHED, MINED, CONFIRMED, RETRYING, FAILED
-type TradeMessage struct {
-	AssetID      string       `json:"asset_id"`
-	EventType    string       `json:"event_type"` // "trade"
-	ID           string       `json:"id"`
-	LastUpdate   string       `json:"last_update"`
-	MakerOrders  []MakerOrder `json:"maker_orders"`
-	Market       string       `json:"market"` // condition ID
-	MatchTime    string       `json:"matchtime"`
-	Outcome      string       `json:"outcome"`
-	Owner        string       `json:"owner"`
-	Price        string       `json:"price"`
-	Side         string       `json:"side"` // BUY/SELL
-	Size         string       `json:"size"`
-	Status       string       `json:"status"` // MATCHED, MINED, CONFIRMED, RETRYING, FAILED
-	TakerOrderID string       `json:"taker_order_id"`
-	Timestamp    string       `json:"timestamp"`
-	TradeOwner   string       `json:"trade_owner"`
-	Type         string       `json:"type"` // "TRADE"
-}
-
-// OrderMessage is emitted for order placements, updates, and cancellations
-// Types: PLACEMENT, UPDATE, CANCELLATION
-type OrderMessage struct {
-	AssetID         string   `json:"asset_id"`
-	AssociateTrades []string `json:"associate_trades"`
-	EventType       string   `json:"event_type"` // "order"
-	ID              string   `json:"id"`
-	Market          string   `json:"market"` // condition ID
-	OrderOwner      string   `json:"order_owner"`
-	OriginalSize    string   `json:"original_size"`
-	Outcome         string   `json:"outcome"`
-	Owner           string   `json:"owner"`
-	Price           string   `json:"price"`
-	Side            string   `json:"side"` // BUY/SELL
-	SizeMatched     string   `json:"size_matched"`
-	Timestamp       string   `json:"timestamp"`
-	Type            string   `json:"type"` // PLACEMENT, UPDATE, CANCELLATION
-}
-
-// UserChannelMessage is a generic wrapper to determine message type
-type UserChannelMessage struct {
-	EventType string `json:"event_type"` // "trade" or "order"
 }
 
 // Trade status constants
@@ -83,34 +96,42 @@ const (
 	SideSell = "SELL"
 )
 
-// Event type constants
+// Topic constants
 const (
-	EventTypeTrade = "trade"
-	EventTypeOrder = "order"
+	TopicActivity = "activity"
+	TopicClobUser = "clob_user"
+	TopicComments = "comments"
 )
 
-// ParseUserMessage parses a raw WebSocket message into the appropriate struct
-func ParseUserMessage(data []byte) (interface{}, error) {
-	// First, determine the event type
-	var wrapper UserChannelMessage
-	if err := json.Unmarshal(data, &wrapper); err != nil {
-		return nil, err
-	}
+// Type constants
+const (
+	TypeTrades = "trades"
+	TypeOrders = "orders"
+)
 
-	switch wrapper.EventType {
-	case EventTypeTrade:
-		var trade TradeMessage
-		if err := json.Unmarshal(data, &trade); err != nil {
-			return nil, err
-		}
-		return &trade, nil
-	case EventTypeOrder:
-		var order OrderMessage
-		if err := json.Unmarshal(data, &order); err != nil {
-			return nil, err
-		}
-		return &order, nil
-	default:
-		return nil, fmt.Errorf("unknown event type: %s", wrapper.EventType)
+// ParseActivityTrade parses the payload from an activity trades message
+func ParseActivityTrade(payload json.RawMessage) (*ActivityTradePayload, error) {
+	var trade ActivityTradePayload
+	if err := json.Unmarshal(payload, &trade); err != nil {
+		return nil, fmt.Errorf("failed to parse activity trade: %w", err)
 	}
+	return &trade, nil
+}
+
+// ParseClobUserOrder parses an order message from clob_user topic
+func ParseClobUserOrder(payload json.RawMessage) (*ClobUserOrder, error) {
+	var order ClobUserOrder
+	if err := json.Unmarshal(payload, &order); err != nil {
+		return nil, fmt.Errorf("failed to parse clob_user order: %w", err)
+	}
+	return &order, nil
+}
+
+// ParseClobUserTrade parses a trade message from clob_user topic
+func ParseClobUserTrade(payload json.RawMessage) (*ClobUserTrade, error) {
+	var trade ClobUserTrade
+	if err := json.Unmarshal(payload, &trade); err != nil {
+		return nil, fmt.Errorf("failed to parse clob_user trade: %w", err)
+	}
+	return &trade, nil
 }
