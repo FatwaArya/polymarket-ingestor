@@ -15,8 +15,89 @@ services:
       - questdb_data:/var/lib/questdb 
     
     # Ensures QuestDB restarts if the host machine restarts
-    restart: unless-stopped 
+    restart: unless-stopped
+    networks:
+      - polymarket-network
 
-# Define the volume where the actual data will be stored
+  # Redpanda - Kafka-compatible message broker (simpler than Kafka + Zookeeper)
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr
+      - internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --advertise-rpc-addr
+      - redpanda:33145
+      - --smp
+      - "1"
+      - --memory
+      - 1G
+      - --mode
+      - dev-container
+      - --default-log-level=info
+    ports:
+      - "18081:18081"  # Schema Registry
+      - "18082:18082"  # Pandaproxy
+      - "19092:19092"  # Kafka API (external)
+      - "19644:9644"   # Admin API
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - polymarket-network
+    restart: unless-stopped
+
+  # Redpanda Console - Web UI for managing Kafka topics
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
+    # ------------------------------------------------------------------
+    # FIX: ADDED COMMAND TO DELAY STARTUP
+    # This ensures Redpanda is fully initialized before the Console connects
+    command: ["/bin/sh", "-c", "sleep 10 && /app/console"]
+    # ------------------------------------------------------------------
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "8080:8080"  # Console UI
+    networks:
+      - polymarket-network
+    depends_on:
+      - redpanda
+    restart: unless-stopped
+
+  # Redpanda Connect - Connects Kafka topics to QuestDB
+  redpanda-connect:
+    image: docker.redpanda.com/redpandadata/connect:latest
+    container_name: redpanda-connect
+    volumes:
+      - ./redpanda-connect/config/config.yaml:/connect-config.yaml
+    # No need for 'rpk' prefix in the dedicated connect image
+    command: ["run", "/connect-config.yaml"]
+    networks:
+      - polymarket-network
+    depends_on:
+      - redpanda
+      - questdb
+    restart: unless-stopped
+
+# Define the volumes where the actual data will be stored
 volumes:
   questdb_data:
+  redpanda_data:
+
+# Network for services to communicate
+networks:
+  polymarket-network:
+    driver: bridge

@@ -11,11 +11,9 @@ import (
 )
 
 type TradeWriter struct {
-	sender        qdb.LineSender
-	tableName     string
-	flushInterval time.Duration
-	done          chan struct{}
-	mu            sync.Mutex
+	sender    qdb.LineSender
+	tableName string
+	mu        sync.Mutex
 }
 
 // NewTradeWriter creates a new QuestDB trade writer using ILP over TCP
@@ -28,17 +26,10 @@ func NewTradeWriter(ctx context.Context, host string, port int) (*TradeWriter, e
 		return nil, err
 	}
 
-	w := &TradeWriter{
-		sender:        sender,
-		tableName:     "polymarket_trades",
-		flushInterval: time.Second, // Flush every 1 second
-		done:          make(chan struct{}),
-	}
-
-	// Start background flusher for TCP
-	go w.backgroundFlush(ctx)
-
-	return w, nil
+	return &TradeWriter{
+		sender:    sender,
+		tableName: "polymarket_trades",
+	}, nil
 }
 
 // NewTradeWriterHTTP creates a new QuestDB trade writer using HTTP protocol with auto-flush
@@ -54,28 +45,6 @@ func NewTradeWriterHTTP(ctx context.Context, host string, port int) (*TradeWrite
 		sender:    sender,
 		tableName: "polymarket_trades",
 	}, nil
-}
-
-// backgroundFlush periodically flushes data to QuestDB (for TCP client)
-func (w *TradeWriter) backgroundFlush(ctx context.Context) {
-	ticker := time.NewTicker(w.flushInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			w.mu.Lock()
-			if err := w.sender.Flush(ctx); err != nil {
-				// Log error but don't stop flushing
-				fmt.Printf("QuestDB flush error: %v\n", err)
-			}
-			w.mu.Unlock()
-		case <-w.done:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 // Write writes a single trade to QuestDB
@@ -122,13 +91,8 @@ func (w *TradeWriter) Flush(ctx context.Context) error {
 	return w.sender.Flush(ctx)
 }
 
-// Close stops the background flusher and closes the connection to QuestDB
+// Close flushes pending data and closes the connection to QuestDB
 func (w *TradeWriter) Close(ctx context.Context) error {
-	// Stop background flusher if running
-	if w.done != nil {
-		close(w.done)
-	}
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

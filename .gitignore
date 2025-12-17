@@ -1,1 +1,10 @@
+.DS_Store
+
+# Kafka Connect artifacts
+kafka-connect/plugins/
+temp-connector-download/
+
+# Go build artifacts
+bin/
+dist/
 .env

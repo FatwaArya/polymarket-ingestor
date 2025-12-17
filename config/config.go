@@ -17,6 +17,8 @@ type Config struct {
 	ChainID              string
 	PolymarketSecret     string
 	PolymarketPassphrase string
+	KafkaBrokers         string
+	KafkaTopic           string
 }
 
 // global
@@ -37,6 +39,8 @@ func init() {
 		ChainID:              getEnv("CHAIN_ID", "137"),
 		PolymarketSecret:     getEnv("POLYMARKET_SECRET", ""),
 		PolymarketPassphrase: getEnv("POLYMARKET_PASSPHRASE", ""),
+		KafkaBrokers:         getEnv("KAFKA_BROKERS", "localhost:19092"),
+		KafkaTopic:           getEnv("KAFKA_TOPIC", "polymarket-trades"),
 	}
 
 	if AppConfig.PolymarketAPIKey == "" {

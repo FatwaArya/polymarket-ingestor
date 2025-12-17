@@ -9,17 +9,23 @@ import (
 	_ "net/http/pprof" // Enable pprof for Roumon
 	"os"
 	"os/signal"
+	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/FatwaArya/pm-ingest/config"
 	"github.com/FatwaArya/pm-ingest/internal"
+	internalkafka "github.com/FatwaArya/pm-ingest/internal/kafka"
 	"github.com/FatwaArya/pm-ingest/utils"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	log.Printf("Starting application in %s mode on port %s", config.AppConfig.GinMode, config.AppConfig.AppPort)
-	log.Printf("QuestDB Connection: %s:%s", config.AppConfig.QuestDBHost, config.AppConfig.QuestDBILPPort)
+	log.Printf("Kafka brokers: %s, topic: %s", config.AppConfig.KafkaBrokers, config.AppConfig.KafkaTopic)
+
+	var processedTrades uint64
+	verbose := true
 
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -42,17 +48,20 @@ func main() {
 	// 	subscriptions = append(subscriptions, internal.NewClobUserSubscription(auth))
 	// }
 
-	writer, err := internal.NewTradeWriter(ctx, "localhost", 9009)
+	// Kafka producer for trades
+	kafkaBrokers := strings.TrimSpace(config.AppConfig.KafkaBrokers)
+	producer, err := internalkafka.NewProducer(kafkaBrokers, config.AppConfig.KafkaTopic)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to create kafka producer: %v", err)
 	}
-
-	defer writer.Close(ctx)
+	defer producer.Close()
 
 	// Create WebSocket client
 	client := internal.NewWebSocketClient(
 		subscriptions,
 		func(message []byte) {
+			// print raw and parsed
+
 			trade, err := utils.ParseActivityTrade(message)
 			if err != nil {
 				// Skip non-trade messages silently
@@ -62,11 +71,19 @@ func main() {
 				log.Printf("Error parsing activity trade: %v", err)
 				return
 			}
-			if err := writer.Write(ctx, trade); err != nil {
-				log.Printf("Error writing trade to QuestDB: %v", err)
+
+			if err := producer.ProduceTrade(ctx, trade); err != nil {
+				log.Printf("Error producing trade to Kafka: %v", err)
+				return
+			}
+			if verbose {
+				count := atomic.AddUint64(&processedTrades, 1)
+				if count%100 == 0 {
+					log.Printf("Processed trades: %d", count)
+				}
 			}
 		},
-		false, // verbose
+		verbose,
 	)
 
 	// Run WebSocket in a goroutine

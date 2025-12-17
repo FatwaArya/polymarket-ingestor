@@ -1,0 +1,29 @@
+input:
+  kafka:
+    addresses:
+      - redpanda:9092
+    topics:
+      - polymarket-trades
+    consumer_group: questdb-sink-group
+    start_from_oldest: false
+
+output:
+  questdb:
+    address: questdb:9000
+    table: polymarket_trades
+    designated_timestamp_field: timestamp
+    symbols:
+      - side
+      - outcome
+      - eventSlug
+      - slug
+      - asset
+      - conditionId
+      - transactionHash
+      - proxyWallet
+      - questionId
+    doubles:
+      - price
+      - size
+      - fee
+

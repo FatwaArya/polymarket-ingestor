@@ -222,9 +222,9 @@ func (w *WebSocketClient) Run() error {
 				continue
 			}
 
-			if w.verbose {
-				log.Printf("Received: %s", string(message))
-			}
+			// if w.verbose {
+			// 	log.Printf("Received: %s", string(message))
+			// }
 
 			// Pass raw message to callback
 			if w.messageCallback != nil {
