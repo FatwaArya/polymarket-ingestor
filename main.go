@@ -15,6 +15,7 @@ import (
 
 	"github.com/FatwaArya/pm-ingest/config"
 	"github.com/FatwaArya/pm-ingest/internal"
+	"github.com/FatwaArya/pm-ingest/internal/domain"
 	internalkafka "github.com/FatwaArya/pm-ingest/internal/kafka"
 	"github.com/FatwaArya/pm-ingest/utils"
 	"github.com/gin-gonic/gin"
@@ -56,6 +57,25 @@ func main() {
 	}
 	defer producer.Close()
 
+	// Discovery service consumer for high-value traders
+	discoveryService, err := domain.NewDiscoveryService(
+		kafkaBrokers,
+		config.AppConfig.KafkaTopic,
+		"discovery-service-group", // Consumer group ID
+	)
+	if err != nil {
+		log.Fatalf("failed to create discovery service: %v", err)
+	}
+	defer discoveryService.Close()
+
+	// Run discovery service in a goroutine
+	go func() {
+		log.Println("Starting discovery service consumer...")
+		if err := discoveryService.Run(ctx); err != nil {
+			log.Printf("Discovery service error: %v", err)
+		}
+	}()
+
 	// Create WebSocket client
 	client := internal.NewWebSocketClient(
 		subscriptions,
@@ -73,7 +93,7 @@ func main() {
 			}
 
 			if err := producer.ProduceTrade(ctx, trade); err != nil {
-				log.Printf("Error producing trade to Kafka: %v", err)
+				log.Printf("Error producing trade to Kafka for id=%s: %v", trade.TransactionHash, err)
 				return
 			}
 			if verbose {

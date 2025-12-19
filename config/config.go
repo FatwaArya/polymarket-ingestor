@@ -19,6 +19,7 @@ type Config struct {
 	PolymarketPassphrase string
 	KafkaBrokers         string
 	KafkaTopic           string
+	ClobEndpoint         string
 }
 
 // global
@@ -41,6 +42,7 @@ func init() {
 		PolymarketPassphrase: getEnv("POLYMARKET_PASSPHRASE", ""),
 		KafkaBrokers:         getEnv("KAFKA_BROKERS", "localhost:19092"),
 		KafkaTopic:           getEnv("KAFKA_TOPIC", "polymarket-trades"),
+		ClobEndpoint:         getEnv("CLOB_ENDPOINT", "https://clob.polymarket.com"),
 	}
 
 	if AppConfig.PolymarketAPIKey == "" {
