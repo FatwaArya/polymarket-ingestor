@@ -11,52 +11,40 @@ import (
 )
 
 const (
-	PolymarketAPIURL = "https://data-api.polymarket.com/trades"
+	PolymarketAPIURL = "https://data-api.polymarket.com/closed-positions"
 )
 
-// Trade represents a trade from the Polymarket API
-type PolymarketTrade struct {
-	ID              string       `json:"id"`
-	TakerOrderID    string       `json:"taker_order_id"`
-	Market          string       `json:"market"`
-	AssetID         string       `json:"asset_id"`
-	Side            string       `json:"side"`
-	Size            string       `json:"size"`
-	FeeRateBps      string       `json:"fee_rate_bps"`
-	Price           string       `json:"price"`
-	Status          string       `json:"status"`
-	MatchTime       string       `json:"match_time"`
-	LastUpdate      string       `json:"last_update"`
-	Outcome         string       `json:"outcome"`
-	MakerAddress    string       `json:"maker_address"`
-	Owner           string       `json:"owner"`
-	TransactionHash string       `json:"transaction_hash"`
-	BucketIndex     int          `json:"bucket_index"`
-	MakerOrders     []MakerOrder `json:"maker_orders"`
-	Type            string       `json:"type"`
+// ClosedPosition represents a closed position from the Polymarket API
+type ClosedPosition struct {
+	ProxyWallet     string  `json:"proxyWallet"`
+	Asset           string  `json:"asset"`
+	ConditionID     string  `json:"conditionId"`
+	AvgPrice        float64 `json:"avgPrice"`
+	TotalBought     float64 `json:"totalBought"`
+	RealizedPnl     float64 `json:"realizedPnl"`
+	CurPrice        float64 `json:"curPrice"`
+	Timestamp       int64   `json:"timestamp"`
+	Title           string  `json:"title"`
+	Slug            string  `json:"slug"`
+	Icon            string  `json:"icon"`
+	EventSlug       string  `json:"eventSlug"`
+	Outcome         string  `json:"outcome"`
+	OutcomeIndex    int     `json:"outcomeIndex"`
+	OppositeOutcome string  `json:"oppositeOutcome"`
+	OppositeAsset   string  `json:"oppositeAsset"`
+	EndDate         string  `json:"endDate"`
 }
 
-// MakerOrder represents a maker order in a trade
-type MakerOrder struct {
-	OrderID       string `json:"order_id"`
-	MakerAddress  string `json:"maker_address"`
-	Owner         string `json:"owner"`
-	MatchedAmount string `json:"matched_amount"`
-	FeeRateBps    string `json:"fee_rate_bps"`
-	Price         string `json:"price"`
-	AssetID       string `json:"asset_id"`
-	Outcome       string `json:"outcome"`
-	Side          string `json:"side"`
-}
-
-// TradesQueryParams represents query parameters for fetching trades
-type TradesQueryParams struct {
-	ID     string // id of trade to fetch
-	Taker  string // address to get trades for where it is included as a taker
-	Maker  string // address to get trades for where it is included as a maker
-	Market string // market for which to get the trades (condition ID)
-	Before string // unix timestamp representing the cutoff up to which trades that happened before then can be included
-	After  string // unix timestamp representing the cutoff for which trades that happened after can be included
+// ClosedPositionsQueryParams represents query parameters for fetching closed positions
+type ClosedPositionsQueryParams struct {
+	User          string   // The address of the user (required)
+	Market        []string // The conditionId of the market(s). Supports multiple values
+	Title         string   // Filter by market title
+	EventID       []int    // The event id(s). Supports multiple values. Cannot be used with Market param
+	Limit         int      // The max number of positions to return (default: 10, max: 50)
+	Offset        int      // The starting index for pagination (default: 0)
+	SortBy        string   // Sort criteria: REALIZEDPNL, TITLE, PRICE, AVGPRICE, TIMESTAMP (default: REALIZEDPNL)
+	SortDirection string   // Sort direction: ASC, DESC (default: DESC)
 }
 
 // PolymarketAPIClient handles API calls to Polymarket
@@ -75,8 +63,8 @@ func NewPolymarketAPIClient() *PolymarketAPIClient {
 	}
 }
 
-// GetTrades fetches trades from the Polymarket API based on query parameters
-func (c *PolymarketAPIClient) GetTrades(ctx context.Context, params TradesQueryParams) ([]PolymarketTrade, error) {
+// GetClosedPositions fetches closed positions from the Polymarket API based on query parameters
+func (c *PolymarketAPIClient) GetClosedPositions(ctx context.Context, params ClosedPositionsQueryParams) ([]ClosedPosition, error) {
 	// Build the API URL with query parameters
 	apiURL, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -85,24 +73,45 @@ func (c *PolymarketAPIClient) GetTrades(ctx context.Context, params TradesQueryP
 
 	// Add query parameters
 	q := url.Values{}
-	if params.ID != "" {
-		q.Add("id", params.ID)
+	if params.User == "" {
+		return nil, fmt.Errorf("user parameter is required")
 	}
-	if params.Taker != "" {
-		q.Add("taker", params.Taker)
+	q.Add("user", params.User)
+
+	if len(params.Market) > 0 {
+		// Support multiple market values (comma-separated)
+		for _, market := range params.Market {
+			q.Add("market", market)
+		}
 	}
-	if params.Maker != "" {
-		q.Add("maker", params.Maker)
+
+	if params.Title != "" {
+		q.Add("title", params.Title)
 	}
-	if params.Market != "" {
-		q.Add("market", params.Market)
+
+	if len(params.EventID) > 0 {
+		// Support multiple eventId values (comma-separated)
+		for _, eventID := range params.EventID {
+			q.Add("eventId", fmt.Sprintf("%d", eventID))
+		}
 	}
-	if params.Before != "" {
-		q.Add("before", params.Before)
+
+	if params.Limit > 0 {
+		q.Add("limit", fmt.Sprintf("%d", params.Limit))
 	}
-	if params.After != "" {
-		q.Add("after", params.After)
+
+	if params.Offset > 0 {
+		q.Add("offset", fmt.Sprintf("%d", params.Offset))
 	}
+
+	if params.SortBy != "" {
+		q.Add("sortBy", params.SortBy)
+	}
+
+	if params.SortDirection != "" {
+		q.Add("sortDirection", params.SortDirection)
+	}
+
 	apiURL.RawQuery = q.Encode()
 
 	// Create request
@@ -124,39 +133,10 @@ func (c *PolymarketAPIClient) GetTrades(ctx context.Context, params TradesQueryP
 	}
 
 	// Parse response
-	var trades []PolymarketTrade
-	if err := json.NewDecoder(resp.Body).Decode(&trades); err != nil {
+	var positions []ClosedPosition
+	if err := json.NewDecoder(resp.Body).Decode(&positions); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return trades, nil
-}
-
-// GetTradesForAddress fetches trades for a specific address (tries both maker and taker)
-func (c *PolymarketAPIClient) GetTradesForAddress(ctx context.Context, address string) ([]PolymarketTrade, error) {
-	// Try fetching as taker first
-	trades, err := c.GetTrades(ctx, TradesQueryParams{
-		Taker: address,
-	})
-	if err != nil {
-		// If taker fails, try as maker
-		makerTrades, makerErr := c.GetTrades(ctx, TradesQueryParams{
-			Maker: address,
-		})
-		if makerErr != nil {
-			return nil, fmt.Errorf("failed to fetch trades as taker (%v) and maker (%v)", err, makerErr)
-		}
-		return makerTrades, nil
-	}
-
-	// If taker succeeded, also try maker to get all trades
-	makerTrades, err := c.GetTrades(ctx, TradesQueryParams{
-		Maker: address,
-	})
-	if err == nil && len(makerTrades) > 0 {
-		// Combine both results (deduplication could be added if needed)
-		trades = append(trades, makerTrades...)
-	}
-
-	return trades, nil
+	return positions, nil
 }

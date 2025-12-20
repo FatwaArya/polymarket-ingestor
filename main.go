@@ -76,6 +76,25 @@ func main() {
 		}
 	}()
 
+	// // Confidence service for calculating user confidence based on new bets and closed positions
+	// confidenceService, err := domain.NewConfidenceService(
+	// 	kafkaBrokers,
+	// 	config.AppConfig.KafkaTopic,
+	// 	"confidence-service-group", // Consumer group ID
+	// )
+	// if err != nil {
+	// 	log.Fatalf("failed to create confidence service: %v", err)
+	// }
+	// defer confidenceService.Close()
+
+	// // Run confidence service in a goroutine
+	// go func() {
+	// 	log.Println("Starting confidence service consumer...")
+	// 	if err := confidenceService.Run(ctx); err != nil {
+	// 		log.Printf("Confidence service error: %v", err)
+	// 	}
+	// }()
+
 	// Create WebSocket client
 	client := internal.NewWebSocketClient(
 		subscriptions,

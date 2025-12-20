@@ -84,6 +84,8 @@ func (ds *DiscoveryService) handleTrade(record *kgo.Record) {
 		return
 	}
 
+	apiClient := internalqdb.NewPolymarketAPIClient()
+
 	tradeSizeInUSD = tradeMsg.Size * tradeMsg.Price
 	// Filter trades with size >= 10k USD
 	if tradeSizeInUSD < MinimumTradeSize {
@@ -91,11 +93,12 @@ func (ds *DiscoveryService) handleTrade(record *kgo.Record) {
 	}
 
 	log.Printf("Processing high-value trade: size=%.2f, proxyWallet=%s",
-		tradeMsg.Size, tradeMsg.ProxyWallet)
+		tradeSizeInUSD, tradeMsg.ProxyWallet)
 
 	// Process proxy wallet address
 	if tradeMsg.ProxyWallet != "" {
 		go ds.fetchAndSaveProfile(context.Background(), tradeMsg.ProxyWallet)
+		go ds.calculateAndLogConfidence(context.Background(), apiClient, tradeMsg.ProxyWallet)
 	}
 }
 
@@ -128,6 +131,25 @@ func (ds *DiscoveryService) fetchAndSaveProfile(ctx context.Context, address str
 	}
 
 	log.Printf("Saved profile for address: %s", address)
+}
+
+// calculateAndLogConfidence calculates and logs confidence metrics for a user
+func (ds *DiscoveryService) calculateAndLogConfidence(ctx context.Context, apiClient *internalqdb.PolymarketAPIClient, userAddress string) {
+	prediction, err := CalculateConfidenceForUser(ctx, apiClient, userAddress, 1000)
+	if err != nil {
+		log.Printf("Error calculating confidence for user %s: %v", userAddress, err)
+		return
+	}
+
+	// Log the confidence result
+	log.Printf("Confidence calculated for user %s:", userAddress)
+	log.Printf("  Sample Size: %d", prediction.SampleSize)
+	log.Printf("  Win Rate: %.2f%%", prediction.WinRate)
+	log.Printf("  Avg Realized PnL: $%.2f", prediction.AvgRealizedPnl)
+	log.Printf("  Total Realized PnL: $%.2f", prediction.TotalRealizedPnl)
+	log.Printf("  Brier Score: %.4f (lower is better)", prediction.BrierScore)
+	log.Printf("  Calibration: %.2f%%", prediction.Calibration)
+	log.Printf("  Confidence Interval: ±$%.2f", prediction.ConfidenceInterval)
 }
 
 // Close closes the discovery service

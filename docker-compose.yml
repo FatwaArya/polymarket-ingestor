@@ -70,7 +70,7 @@ services:
       KAFKA_SCHEMAREGISTRY_ENABLED: "true"
       KAFKA_SCHEMAREGISTRY_URLS: http://redpanda:8081
     ports:
-      - "8080:8080"  # Console UI
+      - "8081:8080"  # Console UI (changed to 8081 to avoid conflict with app)
     networks:
       - polymarket-network
     depends_on:
@@ -91,6 +91,35 @@ services:
       - redpanda
       - questdb
     restart: unless-stopped
+
+  # # Polymarket Ingestor - Main Go application
+  # polymarket-ingestor:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: polymarket-ingestor
+  #   environment:
+  #     APP_PORT: "8080"
+  #     GIN_MODE: "release"
+  #     QUESTDB_HOST: "questdb"
+  #     QUESTDB_ILP_PORT: "9009"
+  #     KAFKA_BROKERS: "redpanda:9092"
+  #     KAFKA_TOPIC: "polymarket-trades"
+  #     CLOB_ENDPOINT: "https://clob.polymarket.com"
+  #     CHAIN_ID: "137"
+  #     # These should be set via .env file or environment variables
+  #     POLYMARKET_APIKEY: "${POLYMARKET_APIKEY}"
+  #     POLYMARKET_SECRET: "${POLYMARKET_SECRET}"
+  #     POLYMARKET_PASSPHRASE: "${POLYMARKET_PASSPHRASE}"
+  #   ports:
+  #     - "8080:8080"  # HTTP API (conflicts with redpanda-console, adjust if needed)
+  #     - "6060:6060"  # pprof server
+  #   networks:
+  #     - polymarket-network
+  #   depends_on:
+  #     - redpanda
+  #     - questdb
+  #   restart: unless-stopped
 
 # Define the volumes where the actual data will be stored
 volumes:

@@ -2,7 +2,6 @@ module github.com/FatwaArya/pm-ingest
 
 go 1.24.0
 
-toolchain go1.24.10
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
