@@ -1,1 +1,1 @@
-this how i justify gambling, add little math were good to go.
+alerting tool
